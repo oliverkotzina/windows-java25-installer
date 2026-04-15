@@ -65,12 +65,35 @@ echo Erzeuge Wrapper "%INSTALL_DIR%\java25.cmd" ...
 
 :register_only
 rem --- PATH-Eintrag im User-Scope --------------------------------------------
+rem  Absichtlich CMD-nativ (reg query + setx) statt PowerShell, damit das
+rem  Skript auch im PowerShell Constrained Language Mode (WDAC/AppLocker)
+rem  laeuft, wo .NET-Methodenaufrufe wie [Environment]::Set... blockiert sind.
+rem  "setx" loest zusaetzlich die WM_SETTINGCHANGE-Broadcast aus, damit neu
+rem  gestartete Terminals den neuen PATH sofort sehen.
 echo Registriere "%INSTALL_DIR%" im User-PATH ...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$t='%INSTALL_DIR%'; $p=[Environment]::GetEnvironmentVariable('Path','User'); if ([string]::IsNullOrEmpty($p)) { $p='' }; $parts=@(($p -split ';') | Where-Object { $_ -ne '' }); if ($parts -inotcontains $t) { $new=(($parts + $t) -join ';'); [Environment]::SetEnvironmentVariable('Path',$new,'User'); Write-Host 'PATH aktualisiert.' } else { Write-Host 'PATH enthaelt den Eintrag bereits.' }"
+
+set "CURRENT_USER_PATH="
+for /f "tokens=2,*" %%A in ('reg query "HKCU\Environment" /v Path 2^>nul ^| find /i "Path"') do set "CURRENT_USER_PATH=%%B"
+
+if defined CURRENT_USER_PATH (
+    echo ";%CURRENT_USER_PATH%;" | find /i ";%INSTALL_DIR%;" >nul
+    if not errorlevel 1 (
+        echo PATH enthaelt den Eintrag bereits.
+        goto :path_done
+    )
+    set "NEW_USER_PATH=%CURRENT_USER_PATH%;%INSTALL_DIR%"
+) else (
+    set "NEW_USER_PATH=%INSTALL_DIR%"
+)
+
+setx Path "%NEW_USER_PATH%" >nul
 if errorlevel 1 (
     echo FEHLER: PATH konnte nicht gesetzt werden.
     goto :fail
 )
+echo PATH aktualisiert.
+
+:path_done
 
 rem --- Cleanup ----------------------------------------------------------------
 if exist "%TMP_ZIP%" del /q "%TMP_ZIP%"
