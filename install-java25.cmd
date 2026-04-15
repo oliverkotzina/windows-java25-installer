@@ -52,11 +52,24 @@ if not defined EXTRACTED (
     echo FEHLER: Erwarteten Unterordner jdk-25* nicht gefunden.
     goto :fail
 )
-ren "%EXTRACTED%" "java25"
-if errorlevel 1 (
-    echo FEHLER: Umbenennen nach java25 fehlgeschlagen.
-    goto :fail
+rem Umbenennen mit Retry: Virenscanner/Indexer halten die gerade entpackten
+rem Dateien kurz offen, sodass ein sofortiger "ren" mit "Zugriff verweigert"
+rem scheitern kann. Wir versuchen es bis zu 15 Sekunden lang.
+set "RETRY=0"
+:ren_retry
+ren "%EXTRACTED%" "java25" 2>nul
+if not errorlevel 1 goto :ren_ok
+set /a RETRY+=1
+if %RETRY% lss 15 (
+    echo   Ordner gesperrt, erneuter Versuch %RETRY%/15 ...
+    timeout /t 1 /nobreak >nul
+    goto :ren_retry
 )
+echo FEHLER: Umbenennen nach java25 fehlgeschlagen (Ordner dauerhaft gesperrt).
+echo Hinweis: Ggf. Virenscanner pruefen oder den Ordner "%EXTRACTED%"
+echo manuell nach "%INSTALL_DIR%" umbenennen und das Skript erneut starten.
+goto :fail
+:ren_ok
 
 rem --- Wrapper java25.cmd anlegen --------------------------------------------
 echo Erzeuge Wrapper "%INSTALL_DIR%\java25.cmd" ...
